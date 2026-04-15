@@ -167,56 +167,59 @@ pub fn build(b: *std.Build) void {
 
     const flags = .{"-std=c99"};
 
+    const makebits_mod = b.createModule(.{
+        .target = b.graph.host,
+        .optimize = .ReleaseFast,
+        .link_libc = true,
+    });
+    makebits_mod.addConfigHeader(config);
+    makebits_mod.addCSourceFile(.{ .file = mawk_dep.path("makebits.c"), .flags = &flags });
     const makebits = b.addExecutable(.{
         .name = "makebits",
-        .root_module = b.createModule(.{
-            .target = b.graph.host,
-            .optimize = .ReleaseFast,
-            .link_libc = true,
-        }),
+        .root_module = makebits_mod,
     });
-    makebits.addConfigHeader(config);
-    makebits.addCSourceFile(.{ .file = mawk_dep.path("makebits.c"), .flags = &flags });
     const makebits_cmd = b.addRunArtifact(makebits);
     const makebits_h = b.addConfigHeader(.{
-        .style = .{ .autoconf_undef = makebits_cmd.captureStdOut() },
+        .style = .{ .autoconf_undef = makebits_cmd.captureStdOut(.{}) },
         .include_path = "makebits.h",
     }, .{});
 
+    const makescan_mod = b.createModule(.{
+        .target = b.graph.host,
+        .optimize = .ReleaseFast,
+        .link_libc = true,
+    });
+    makescan_mod.addIncludePath(mawk_dep.path("."));
+    makescan_mod.addConfigHeader(config);
+    makescan_mod.addCSourceFile(.{ .file = mawk_dep.path("makescan.c"), .flags = &flags });
     const makescan = b.addExecutable(.{
         .name = "makescan",
-        .root_module = b.createModule(.{
-            .target = b.graph.host,
-            .optimize = .ReleaseFast,
-            .link_libc = true,
-        }),
+        .root_module = makescan_mod,
     });
-    makescan.addIncludePath(mawk_dep.path("."));
-    makescan.addConfigHeader(config);
-    makescan.addCSourceFile(.{ .file = mawk_dep.path("makescan.c"), .flags = &flags });
     const makescan_cmd = b.addRunArtifact(makescan);
-    const makescan_c = makescan_cmd.captureStdOut();
+    const makescan_c = makescan_cmd.captureStdOut(.{});
 
-    const mawk = b.addExecutable(.{
-        .name = "mawk",
-        .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-            .link_libc = true,
-        }),
+    const mawk_mod = b.createModule(.{
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
     });
     if (target.result.abi.isGnu()) {
-        mawk.root_module.addCMacro("_GNU_SOURCE", "");
+        mawk_mod.addCMacro("_GNU_SOURCE", "");
     }
-    mawk.addIncludePath(mawk_dep.path("."));
-    mawk.addConfigHeader(makebits_h);
-    mawk.addConfigHeader(config);
-    mawk.addCSourceFiles(.{
+    mawk_mod.addIncludePath(mawk_dep.path("."));
+    mawk_mod.addConfigHeader(makebits_h);
+    mawk_mod.addConfigHeader(config);
+    mawk_mod.addCSourceFiles(.{
         .root = mawk_dep.path("."),
         .files = &sources,
         .flags = &flags,
     });
-    mawk.addCSourceFile(.{ .file = makescan_c, .flags = &flags, .language = .c });
+    mawk_mod.addCSourceFile(.{ .file = makescan_c, .flags = &flags, .language = .c });
+    const mawk = b.addExecutable(.{
+        .name = "mawk",
+        .root_module = mawk_mod,
+    });
     b.installArtifact(mawk);
 }
 
